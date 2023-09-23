@@ -15,20 +15,20 @@ import (
 
 var interpolatedRules = lexer.Rules{
 	"Root": {
-		{`String`, `"`, lexer.Push("String")},
+		{`String`, `"`, nil, lexer.Push("String")},
 	},
 	"String": {
-		{"Escaped", `\\.`, nil},
-		{"StringEnd", `"`, lexer.Pop()},
-		{"Expr", `\${`, lexer.Push("Expr")},
-		{"Char", `[^$"\\]+`, nil},
+		{"Escaped", `\\.`, nil, nil},
+		{"StringEnd", `"`, nil, lexer.Pop()},
+		{"Expr", `\${`, nil, lexer.Push("Expr")},
+		{"Char", `[^$"\\]+`, nil, nil},
 	},
 	"Expr": {
 		lexer.Include("Root"),
-		{`whitespace`, `\s+`, nil},
-		{`Oper`, `[-+/*%]`, nil},
-		{"Ident", `\w+`, nil},
-		{"ExprEnd", `}`, lexer.Pop()},
+		{`whitespace`, `\s+`, nil, nil},
+		{`Oper`, `[-+/*%]`, nil, nil},
+		{"Ident", `\w+`, nil, nil},
+		{"ExprEnd", `}`, nil, lexer.Pop()},
 	},
 }
 
@@ -52,38 +52,38 @@ func TestStatefulLexer(t *testing.T) {
 	}{
 		{name: "InvalidPushTarget",
 			buildErr: `invalid action for rule "foo": push to unknown state "Invalid"`,
-			rules:    lexer.Rules{"Root": {{`foo`, ``, lexer.Push("Invalid")}}},
+			rules:    lexer.Rules{"Root": {{`foo`, ``, nil, lexer.Push("Invalid")}}},
 		},
 		{name: "BackrefNoGroups",
 			input: `hello`,
 			err:   `1:1: rule "Backref": invalid backref expansion: "\\1": invalid group 1 from parent with 0 groups`,
-			rules: lexer.Rules{"Root": {{"Backref", `\1`, nil}}},
+			rules: lexer.Rules{"Root": {{"Backref", `\1`, nil, nil}}},
 		},
 		{name: "BackrefInvalidGroups",
 			input: `<<EOF EOF`,
 			err:   "1:6: rule \"End\": invalid backref expansion: \"\\\\b\\\\2\\\\b\": invalid group 2 from parent with 2 groups",
 			rules: lexer.Rules{
 				"Root": {
-					{"Heredoc", `<<(\w+)\b`, lexer.Push("Heredoc")},
+					{"Heredoc", `<<(\w+)\b`, nil, lexer.Push("Heredoc")},
 				},
 				"Heredoc": {
-					{"End", `\b\2\b`, lexer.Pop()},
+					{"End", `\b\2\b`, nil, lexer.Pop()},
 				},
 			},
 		},
 		{name: "Heredoc",
 			rules: lexer.Rules{
 				"Root": {
-					{"Heredoc", `<<(\w+\b)`, lexer.Push("Heredoc")},
+					{"Heredoc", `<<(\w+\b)`, nil, lexer.Push("Heredoc")},
 					lexer.Include("Common"),
 				},
 				"Heredoc": {
-					{"End", `\b\1\b`, lexer.Pop()},
+					{"End", `\b\1\b`, nil, lexer.Pop()},
 					lexer.Include("Common"),
 				},
 				"Common": {
-					{"Whitespace", `\s+`, nil},
-					{"Ident", `\w+`, nil},
+					{"Whitespace", `\s+`, nil, nil},
+					{"Ident", `\w+`, nil, nil},
 				},
 			},
 			input: `
@@ -96,10 +96,10 @@ func TestStatefulLexer(t *testing.T) {
 		{name: "BackslashIsntABackRef",
 			rules: lexer.Rules{
 				"Root": {
-					{"JustOne", `(\\\\1)`, lexer.Push("Convoluted")},
+					{"JustOne", `(\\\\1)`, nil, lexer.Push("Convoluted")},
 				},
 				"Convoluted": {
-					{"ConvolutedMatch", `\\\1`, nil},
+					{"ConvolutedMatch", `\\\1`, nil, nil},
 				},
 			},
 			input:  `\\1\\\1`,
@@ -108,20 +108,20 @@ func TestStatefulLexer(t *testing.T) {
 		{name: "Recursive",
 			rules: lexer.Rules{
 				"Root": {
-					{`String`, `"`, lexer.Push("String")},
+					{`String`, `"`, nil, lexer.Push("String")},
 				},
 				"String": {
-					{"Escaped", `\\.`, nil},
-					{"StringEnd", `"`, lexer.Pop()},
-					{"Expr", `\${`, lexer.Push("Expr")},
-					{"Char", `[^$"\\]+`, nil},
+					{"Escaped", `\\.`, nil, nil},
+					{"StringEnd", `"`, nil, lexer.Pop()},
+					{"Expr", `\${`, nil, lexer.Push("Expr")},
+					{"Char", `[^$"\\]+`, nil, nil},
 				},
 				"Expr": {
 					lexer.Include("Root"),
-					{`Whitespace`, `\s+`, nil},
-					{`Oper`, `[-+/*%]`, nil},
-					{"Ident", `\w+`, nil},
-					{"ExprEnd", `}`, lexer.Pop()},
+					{`Whitespace`, `\s+`, nil, nil},
+					{`Oper`, `[-+/*%]`, nil, nil},
+					{"Ident", `\w+`, nil, nil},
+					{"ExprEnd", `}`, nil, lexer.Pop()},
 				},
 			},
 			input:  `"hello ${user + "??" + "${nested}"}"`,

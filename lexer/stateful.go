@@ -17,11 +17,30 @@ var (
 	backrefReplace = regexp.MustCompile(`(\\+)(\d)`)
 )
 
+// CustomRuleOutput contains the results of applying a custom lexer rule
+type CustomRuleOutput struct {
+	// Action is the action to take for a stateful lexer
+	Action Action
+	// Matches are the index pairs {all start, all end, group 1 start, group 1 end, group 2 start, group 2 end, ...)
+	// of the text matched by the rule
+	Matches []int
+}
+
 // A Rule matching input and possibly changing state.
 type Rule struct {
 	Name    string `json:"name"`
 	Pattern string `json:"pattern"`
-	Action  Action `json:"action"`
+	// Custom, if specified, implements custom lexing logic for this rule.
+	// If the rule matches, a non-nil output and a nil error should be returned,
+	// which includes the token lexed, the action to take, and how many characters
+	// were consumed.
+	// If the rule does not match, nil output and nil error should be returned
+	// If error is non-nil, it is considered a catstrophic and unrecoverable error,
+	// and lexing stops
+	// In addition to the data being lexed, this function must also accept (but may ignore)
+	// the name and regex groups of the parent state
+	Custom func(parentName string, parentGroups []string, data string) (*CustomRuleOutput, error)
+	Action Action `json:"action"`
 }
 
 var _ json.Marshaler = &Rule{}
@@ -83,6 +102,9 @@ func (r *Rule) MarshalJSON() ([]byte, error) {
 	jrule := jsonRule{
 		Name:    r.Name,
 		Pattern: r.Pattern,
+	}
+	if r.Custom != nil {
+		jrule.Pattern = "<Custom Function>"
 	}
 	if r.Action != nil {
 		actionData, err := json.Marshal(r.Action)
@@ -161,7 +183,7 @@ func Pop() Action {
 }
 
 // ReturnRule signals the lexer to return immediately.
-var ReturnRule = Rule{"returnToParent", "", nil}
+var ReturnRule = Rule{"returnToParent", "", nil, nil}
 
 // Return to the parent state.
 //
@@ -248,6 +270,12 @@ func New(rules Rules) (*StatefulDefinition, error) {
 					return nil, fmt.Errorf("invalid action for rule %q: %w", rule.Name, err)
 				}
 			}
+			if rule.Custom != nil {
+				compiled[key] = append(compiled[key], compiledRule{
+					Rule: rule,
+				})
+				continue
+			}
 			pattern := "^(?:" + rule.Pattern + ")"
 			var (
 				re  *regexp.Regexp
@@ -290,7 +318,7 @@ restart:
 	rn := EOF - 1
 	for _, key := range keys {
 		for i, rule := range compiled[key] {
-			if dup, ok := duplicates[rule.Name]; ok && rule.Pattern != dup.Pattern {
+			if dup, ok := duplicates[rule.Name]; ok && rule.Custom != nil && rule.Pattern != dup.Pattern {
 				panic(fmt.Sprintf("duplicate key %q with different patterns %q != %q", rule.Name, rule.Pattern, dup.Pattern))
 			}
 			duplicates[rule.Name] = rule
@@ -374,12 +402,27 @@ next:
 		)
 		for i, candidate := range rules {
 			// Special case "Return()".
-			if candidate.Rule == ReturnRule {
+			if candidate.Rule.Name == ReturnRule.Name && candidate.Rule.Action == ReturnRule.Action && candidate.Rule.Pattern == ReturnRule.Pattern {
 				l.stack = l.stack[:len(l.stack)-1]
 				parent = l.stack[len(l.stack)-1]
 				rules = l.def.rules[parent.name]
 				continue next
 			}
+
+			if candidate.Custom != nil {
+				rules[i].Action = nil
+				output, err := candidate.Custom(parent.name, parent.groups, l.data)
+				if err != nil {
+					return Token{}, errorf(l.pos, "rule %q: %s", candidate.Name, err)
+				}
+				if output != nil {
+					rules[i].Action = output.Action
+					rule = &rules[i]
+					match = output.Matches
+					break
+				}
+			}
+
 			re, err := l.getPattern(candidate)
 			if err != nil {
 				return Token{}, errorf(l.pos, "rule %q: %s", candidate.Name, err)

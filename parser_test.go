@@ -1419,8 +1419,8 @@ func TestEndPos(t *testing.T) {
 	var (
 		Lexer = lexer.Must(lexer.New(lexer.Rules{
 			"Root": {
-				{"Ident", `[\w:]+`, nil},
-				{"Whitespace", `[\r\t ]+`, nil},
+				{"Ident", `[\w:]+`, nil, nil},
+				{"Whitespace", `[\r\t ]+`, nil, nil},
 			},
 		}))
 
@@ -1453,10 +1453,10 @@ func TestBug(t *testing.T) {
 	var (
 		lexer = lexer.Must(lexer.New(lexer.Rules{
 			"Root": {
-				{"A", `@`, nil},
-				{"B", `!`, nil},
-				{"Ident", `[\w:]+`, nil},
-				{"Whitespace", `[\r\t ]+`, nil},
+				{"A", `@`, nil, nil},
+				{"B", `!`, nil, nil},
+				{"Ident", `[\w:]+`, nil, nil},
+				{"Whitespace", `[\r\t ]+`, nil, nil},
 			},
 		}))
 		parser = participle.MustBuild[AST](
